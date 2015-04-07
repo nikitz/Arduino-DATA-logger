@@ -1,0 +1,391 @@
+/* this is the first try to create TIME PRESSURE TEMPERATURE datalogger. It was a mix from few examples I saw in the net, 
+which I have modified a little. IT records all the data in micro SD card.
+It is build from:
+1. arduino mega 2560
+2. lcdkeypad shield
+3. GY-68 powered with Bosch`s BMP180 containing precise pressure and temperature sensor.
+4. micro card adapter v1.0
+5. ZS-042 real time clock RTC with DS3231 chip if you want to use this board for a long time like me,  
+with a normal cr2032 batery, you will have to cut the trace between the diode 5 and resistor 4 on the back. 
+You will have to set it with another sketch. There is a example in the library.  
+6 . BT dongle -  I am usin it, to check from time to time how is it woirking.
+7. in future Iam planing to conect and few K type Temp sensors
+
+*/
+
+
+// ---------------------------delay time between each measurment -----------------
+int wait = 10000; // delay time  before measurement,  it will be readed from the file DELAY.txt 
+long ID = 0; // number of measurment 
+
+//------------lcd display -------------------
+#include <LiquidCrystal.h> // initialize the library with the numbers of the interface pins
+LiquidCrystal lcd(8,9,4,5,6,7);// this is for lcd keypad shield 
+
+
+//-------------bmp pressure SENSOR-----------------
+#include <SFE_BMP180.h>// Your sketch must #include this library, and the Wire library.
+#include <Wire.h>// (Wire is a standard library included with Arduino.)
+SFE_BMP180 pressure;// You will need to create an SFE_BMP180 object, here called "pressure":
+#define ALTITUDE 164.0 // Altitude of Plovdiv in meters, need to calculate atmPressure at sea level.
+//you must place the altitude of your place here.
+
+// ---------------------rtc DS3231------------------
+#include "ds3231.h" //#include "rtc_ds3231.h" the library for real time clock 
+#define BUFF_MAX 128
+uint8_t time[8];
+char recv[BUFF_MAX];
+unsigned int recv_size=0;
+unsigned long prev, interval =0;
+
+// -----------------------------Sd card-------------------
+#include <SPI.h> // sd card is conected to SPI 50,51,52,53 on mega 
+#include <SD.h> // sd card library. 
+
+const int chipSelect = 53; // CS on mega is 53
+
+// -------------- global variables --------------------
+struct ts t; // used in GETTIME and needed in loop for print command
+String minutes; // needed to write the minutes and second result correctly
+String seconds;
+
+
+void setup()
+{
+  lcd.begin(16,2); // lcd display init
+  Serial.begin(9600); // pc serial init
+  Serial2.begin(57600); // BT dongle setup for baud 57600. Conect RX of BT to TX2-16 and TX of BT to RX-17 on MEGA
+  Wire.begin();// IIC or I2C 
+  
+  lcd.clear(); // erase lcd 
+  lcd.setCursor(0,0); // set the cursor on upper line 
+  lcd.print("DATA LOGGER 1.0b "); // print the welcome message to lcd
+  lcd.setCursor(0,1);
+  lcd.print("   LOADING ...");
+  delay(1500);
+  
+  Serial.println("SD card initializing ...");  // sd card init...
+  pinMode(53, OUTPUT);  //sd card chip select pin 53 on Mega
+  lcd.setCursor(0,0); // set the cursor on upper line 
+  lcd.print("SD card init..."); // print the message to lcd
+  delay(1000); // time to read message
+  
+  if (!SD.begin(chipSelect)){
+    Serial.println("CARD FAILED OR NOT INSERTED");
+    lcd.clear();
+    lcd.setCursor(0,0);
+    lcd.print("CARD FAILED OR"); // print the message to lcd
+    lcd.setCursor(0,1);
+    lcd.print("NOT INSERTED");
+    delay (1500);
+    return;//dont do anything more
+  }
+  Serial.println("Card initialized correctly");
+  lcd.setCursor(0,0);
+  lcd.print("   SD card OK    ");
+  delay(1000);
+  
+  File logFile = SD.open("TPLOG.csv", FILE_WRITE); //writing the header text in sd card to TPLOG.csv
+  if(logFile)
+  {
+    logFile.println("Starting new record"); // usefull when searching start of records
+    String header ="ID, DATE, TIME, TEMPERATURE, atmPRESSURE";
+    logFile.println(header); // writes the above text as first row. 
+    logFile.close();
+    //Serial.println(header); // for test only 
+  }
+else{
+  Serial.print("Coldnt open file");
+}
+  
+  File delayFile = SD.open("DELAY.txt"); // open and read the delay time from file in SD card
+  if (delayFile) {
+    Serial.println("READED DELAY IS:");
+            while (delayFile.available()) 
+        {// read from the file until there's nothing else in it:
+    	Serial.write(delayFile.read());// show the delay in serial 
+        wait = delayFile.read()*1000; // read in SEC and set up the delay time in millis
+        
+  }
+    
+    delayFile.close();// close the file:
+    Serial.println(wait);
+  } else {
+  	
+    Serial.println("error opening DELAY.txt");// if the file didn't open, print an error:
+  }
+  DS3231_init(DS3231_INTCN); // za rtc 
+  memset(recv, 0, BUFF_MAX); // za rtc
+  Serial.println("REBOOT");
+  lcd.setCursor(2,0);
+  lcd.print("REBOOT");
+
+  // Initialize the sensor (it is important to get calibration values stored on the device).
+
+  if (pressure.begin()){
+    Serial.println("BMP180 init success");
+    lcd.setCursor(0,0);
+    lcd.print("BMP180 init OK");
+  }
+  else
+  {
+    // Oops, something went wrong, this is usually a connection problem,
+    // see the comments at the top of this sketch for the proper connections.
+
+    Serial.println("BMP180 init fail\n\n");
+    lcd.setCursor(0,0);
+    lcd.print("BMP180 init FAIL");
+    while(1); // Pause forever.
+  }
+lcd.clear();
+}
+
+void loop()
+{
+  
+  GETTIME();
+  
+  //lcd.clear();
+  char status;
+  double T,P,p0,a;
+  // Loop here getting pressure readings every 10 seconds.
+  // If you want sea-level-compensated pressure, as used in weather reports,
+  // you will need to know the altitude at which your measurements are taken.
+  // We're using a constant called ALTITUDE in this sketch:
+  
+  //Serial.println();
+  Serial.print("provided altitude: ");
+  Serial.print(ALTITUDE,0);
+  Serial.print(" meters, ");
+  Serial.print(ALTITUDE*3.28084,0);
+  Serial.println(" feet");
+  
+  // If you want to measure altitude, and not pressure, you will instead need
+  // to provide a known baseline pressure. This is shown at the end of the sketch.
+
+  // You must first get a temperature measurement to perform a pressure reading.
+  
+  // Start a temperature measurement:
+  // If request is successful, the number of ms to wait is returned.
+  // If request is unsuccessful, 0 is returned.
+
+  status = pressure.startTemperature();
+  if (status != 0)
+  {
+    // Wait for the measurement to complete:
+    delay(status);
+
+    // Retrieve the completed temperature measurement:
+    // Note that the measurement is stored in the variable T.
+    // Function returns 1 if successful, 0 if failure.
+
+    status = pressure.getTemperature(T);
+    if (status != 0)
+    {
+      
+      
+
+            // Print out the measurement:
+      Serial.print("temperature: ");
+      Serial.print(T,2);
+      Serial2.print("TEMPERATURE IS: ");
+      Serial2.print(T,2);
+      Serial2.print((char)176);
+      Serial2.println("C");
+      
+      lcd.setCursor(0,0);
+      lcd.print("TEMP IS: ");
+      lcd.print(T,2);
+      lcd.print((char)223);
+      lcd.print("C");
+      
+      Serial.print(" deg C, ");
+      Serial.print((9.0/5.0)*T+32.0,2);
+      Serial.println(" deg F");
+      
+      // Start a pressure measurement:
+      // The parameter is the oversampling setting, from 0 to 3 (highest res, longest wait).
+      // If request is successful, the number of ms to wait is returned.
+      // If request is unsuccessful, 0 is returned.
+
+      status = pressure.startPressure(3);
+      if (status != 0)
+      {
+        // Wait for the measurement to complete:
+        delay(status);
+
+        // Retrieve the completed pressure measurement:
+        // Note that the measurement is stored in the variable P.
+        // Note also that the function requires the previous temperature measurement (T).
+        // (If temperature is stable, you can do one temperature measurement for a number of pressure measurements.)
+        // Function returns 1 if successful, 0 if failure.
+
+        status = pressure.getPressure(P,T);
+        if (status != 0)
+        {
+          // Print out the measurement:
+          Serial.print("absolute pressure: ");
+          Serial.print(P,2);
+          Serial.print(" mb, ");
+          Serial.print(P*0.0295333727,2);
+          Serial.println(" inHg");
+
+          // The pressure sensor returns abolute pressure, which varies with altitude.
+          // To remove the effects of altitude, use the sealevel function and your current altitude.
+          // This number is commonly used in weather reports.
+          // Parameters: P = absolute pressure in mb, ALTITUDE = current altitude in m.
+          // Result: p0 = sea-level compensated pressure in mb
+
+          p0 = pressure.sealevel(P,ALTITUDE); // we're at 1655 meters (Boulder, CO)
+          Serial.print("relative (sea-level) pressure: ");
+          Serial.print(p0,2);
+          Serial.print(" mb, ");
+          Serial.print(p0*0.0295333727,2);
+          Serial.println(" inHg");
+          
+          Serial2.print("ATMOSPHERIC PRESSURE IS ");
+          Serial2.print(p0,2);
+          Serial2.println("hPa");
+                    
+          lcd.setCursor(0,1);
+          lcd.print("Patm ");
+          lcd.print(p0,2);
+          lcd.print("hPa");
+
+          // On the other hand, if you want to determine your altitude from the pressure reading,
+          // use the altitude function along with a baseline pressure (sea-level or other).
+          // Parameters: P = absolute pressure in mb, p0 = baseline pressure in mb.
+          // Result: a = altitude in m.
+
+          a = pressure.altitude(P,p0);
+          Serial.print("computed altitude: ");
+          Serial.print(a,0);
+          Serial.print(" meters, ");
+          Serial.print(a*3.28084,0);
+          Serial.println(" feet");
+          Serial.println();
+        }
+        else Serial.println("error retrieving pressure measurement\n");
+      }
+      else Serial.println("error starting pressure measurement\n");
+    }
+    else Serial.println("error retrieving temperature measurement\n");
+  }
+  else Serial.println("error starting temperature measurement\n");
+
+// ----------------create dayta string and write to sd card
+
+String dataString =String(ID)+", "+ String(t.mday)+"/"+ String(t.mon)+ "/"+ String(t.year)+ ", " + String(t.hour)+":"+String(minutes)+ ":" +String(seconds)+ ", "+String(T,2)+", " +String(p0,2);
+
+
+File logFile = SD.open("TPLOG.csv", FILE_WRITE);
+if (logFile)
+{
+  logFile.println(dataString);
+  logFile.close();
+  Serial.print("SAVED DATA TO SD CARD IS:   ");
+  Serial.println (dataString);
+  Serial2.print("SAVED DATA TO SD CARD IS:   ");
+  Serial2.println (dataString);
+}
+else
+{
+  Serial.println("Could not open  file");
+}
+  ID = ID+1;
+  delay(wait);  // Pause for 5 seconds.
+}
+
+void GETTIME ()
+{
+  char in;
+    char tempF[6]; 
+    float temperature;
+    char buff[BUFF_MAX];
+    unsigned long now = millis();
+    
+    
+
+    // show time once in a while
+    if ((now - prev > interval) && (Serial.available() <= 0)) {
+        DS3231_get(&t); //Get time
+        //parse_cmd("C",1);
+        temperature = DS3231_get_treg(); //Get temperature
+        dtostrf(temperature, 5, 1, tempF);
+
+        //lcd.clear();
+        //lcd.setCursor(1,0);
+        
+        //lcd.print(t.mday);
+        Serial.print(t.mday);
+         Serial2.print(t.mday); // BT SERIAL PRINT TEST working 
+
+        printMonth(t.mon);
+        
+        //lcd.print(t.year);
+        Serial.print(t.year);
+        Serial2.print(t.year);
+        Serial.print(" ");
+        Serial2.print(" ");
+        //lcd.setCursor(0,1); //Go to second line of the LCD Screen
+        //lcd.print(t.hour);
+        Serial.print(t.hour);
+        Serial2.print(t.hour);
+        //lcd.print(":");
+        Serial.print(":");
+        Serial2.print(":");
+        
+        if(t.min<10)
+        {
+          //lcd.print("0");
+          Serial.print("0");
+          Serial2.print("0");
+          minutes = "0"+String(t.min);
+        }else{
+        //lcd.print(t.min);
+        Serial.print(t.min);
+        Serial2.print(t.min);
+        //lcd.print(":");
+        Serial.print(":");
+        Serial2.print(":");
+        minutes = String(t.min);
+        }
+        if(t.sec<10)
+        {
+          //lcd.print("0");
+          Serial.print("0");
+          Serial2.print("0");
+          seconds = "0"+String(t.sec);
+        }else{
+        //lcd.print(t.sec);
+        Serial.println(t.sec);
+        Serial2.println(t.sec);
+        seconds = String(t.sec);
+        //lcd.print(' ');
+        //lcd.print(tempF);
+        //lcd.print((char)223);
+        //lcd.print("C ");
+        }
+        prev = now;
+        
+}}
+
+void printMonth(int month)
+{
+  switch(month)
+  {
+    case 1: Serial.print(" January "); Serial2.print("JANUARY");break;
+    case 2: Serial.print(" February "); Serial2.print("FEBRYARY");break;
+    case 3: Serial.print(" March "); Serial2.print("MARCH");break;
+    case 4: Serial.print(" April ");Serial2.print("APRIL");break;
+    case 5: Serial.print(" May ");Serial2.print("MAY");break;
+    case 6: Serial.print(" June ");Serial2.print("JUNE");break;
+    case 7: Serial.print(" July ");Serial2.print("JULY");break;
+    case 8: Serial.print(" August ");Serial2.print("AUGUST");break;
+    case 9: Serial.print(" September ");Serial2.print("SEPTEMBER");break;
+    case 10: Serial.print(" October ");Serial2.print("OCTOBER");break;
+    case 11: Serial.print(" November ");Serial2.print("NOVEMBER");break;
+    case 12: Serial.print(" December ");Serial2.print("DECEMBER");break;
+    default: Serial.print(" Error ");Serial2.print("ERROR");break;
+  } 
+}
