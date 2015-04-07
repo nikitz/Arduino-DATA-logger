@@ -1,6 +1,6 @@
 /* this is the first try to create TIME PRESSURE TEMPERATURE datalogger. It was a mix from few examples I saw in the net, 
-which I have modified a little. IT records all the data in micro SD card.
-It is build from:
+which I have modified a little. IT records all the data in a micro SD card.
+It was build from:
 1. arduino mega 2560
 2. lcdkeypad shield
 3. GY-68 powered with Bosch`s BMP180 containing precise pressure and temperature sensor.
