@@ -52,8 +52,18 @@ String minutes; // needed to write the minutes and second result correctly
 String seconds;
 char status; // usedn in GETPRESSUREandTEMPERATURE
 double T,P,p0,a; //use in GETPRESSUREandTEMPERATURE
+boolean lcdState = false;
+int buttonState = 0;
+int lastButtonState = 0;
+
+
 
 //####################################### SETUP () ############################################
+
+
+
+
+
 void setup()
 {
   lcd.begin(16,2); // lcd display init
@@ -63,7 +73,7 @@ void setup()
   
   lcd.clear(); // erase lcd 
   lcd.setCursor(0,0); // set the cursor on upper line 
-  lcd.print("DATA LOGGER 1.0b "); // print the welcome message to lcd
+  lcd.print("DATA LOGGER 1.3b "); // print the welcome message to lcd
   lcd.setCursor(0,1);
   lcd.print("   LOADING ...");
   delay(1500);
@@ -161,18 +171,44 @@ lcd.clear();
 
 void loop()
 {
-  unsigned long currentMillis = millis();
+   
+  buttonState = analogRead(0);        // --------------Button Debounce for RIGHT------
+  if(buttonState != lastButtonState)
+  if (buttonState == LOW ){
+    if(lcdState == false)
+    lcdState = true;
+    else
+    lcdState=false;
+  }
+  astButtonState = buttonState; // ----------------------end of debouce for Right------
   
-  if (currentMillis - previousMillis >= wait)
-  {
-  previousMillis = currentMillis;
+  
   GETTIME();// receiving Time data
   GETPRESSUREandTEMPERATURE();// receive Data and hour data
+  if(lcdState == false){
+ Serial.println();
+    Serial.print(lcdState);
+    Serial.println();
+    LCDTEXT1();
+    }
+    else{
+    LCDTEXT2 ();
+    }
+  
+  
+  unsigned long currentMillis = millis();
+    if (currentMillis - previousMillis >= wait)
+  {
+    if(lcdState == false){
+    lcdState=true;
+  }else{
+    lcdState = false;
+    }
+    previousMillis = currentMillis;
   SDCARDRECORDING(); // record the data to SD
-  ID = ID+1; // numbering every measurment 
-  //delay(wait);  // 
+  ID = ID+1; // increase the number of every measurment 
+    }
   }
-}
 
 
 //=============================== END OF LOOP ===========================================================
@@ -191,62 +227,69 @@ void GETTIME ()
     // show time once in a while
     if ((now - prev > interval) && (Serial.available() <= 0)) {
         DS3231_get(&t); //Get time
-        //parse_cmd("C",1);
+        
         temperature = DS3231_get_treg(); //Get temperature
         dtostrf(temperature, 5, 1, tempF);
 
-        //lcd.clear();
-        //lcd.setCursor(1,0);
         
-        //lcd.print(t.mday);
         Serial.print(t.mday);
          Serial2.print(t.mday); // BT SERIAL PRINT TEST working 
 
         printMonth(t.mon);
         
-        //lcd.print(t.year);
+        
         Serial.print(t.year);
         Serial2.print(t.year);
         Serial.print(" ");
         Serial2.print(" ");
-        //lcd.setCursor(0,1); //Go to second line of the LCD Screen
-        //lcd.print(t.hour);
+        
         Serial.print(t.hour);
         Serial2.print(t.hour);
-        //lcd.print(":");
+        
         Serial.print(":");
         Serial2.print(":");
         
         if(t.min<10)
         {
-          //lcd.print("0");
+          
           Serial.print("0");
           Serial2.print("0");
           minutes = "0"+String(t.min);
         }else{
-        //lcd.print(t.min);
+        
         Serial.print(t.min);
         Serial2.print(t.min);
-        //lcd.print(":");
+        
         Serial.print(":");
         Serial2.print(":");
         minutes = String(t.min);
         }
         if(t.sec<10)
         {
-          //lcd.print("0");
+          
           Serial.print("0");
           Serial2.print("0");
           seconds = "0"+String(t.sec);
         }else{
-        //lcd.print(t.sec);
+        
         Serial.println(t.sec);
         Serial2.println(t.sec);
         seconds = String(t.sec);
-        //lcd.print(' ');
-        //lcd.print(tempF);
-        //lcd.print((char)223);
-        //lcd.print("C ");
+        /*lcd.setCursor(0,0);
+        lcd.print(t.mday);
+        lcd.print("/");
+        lcd.print(t.mon);
+        lcd.print("/");
+        lcd.print(t.year);
+        lcd.print(t.hour);
+        lcd.print(":");
+        lcd.print(minutes);
+        lcd.print(":");
+        lcd.print(seconds);
+*/
+
+        
+        
         }
         prev = now;
         
@@ -271,6 +314,8 @@ void printMonth(int month)
     default: Serial.print(" Error ");Serial2.print("ERROR");break;
   } 
 }
+
+
 
 void GETPRESSUREandTEMPERATURE()
 {
@@ -321,11 +366,11 @@ void GETPRESSUREandTEMPERATURE()
       Serial2.print((char)176);
       Serial2.println("C");
       
-      lcd.setCursor(0,0);
-      lcd.print("TEMP IS: ");
-      lcd.print(T,2);
-      lcd.print((char)223);
-      lcd.print("C");
+      //lcd.setCursor(9,1);
+     //lcd.print(" T ");
+      //lcd.print(T,2);
+      //lcd.print((char)223);
+     //lcd.print("C");
       
       Serial.print(" deg C, ");
       Serial.print((9.0/5.0)*T+32.0,2);
@@ -352,6 +397,7 @@ void GETPRESSUREandTEMPERATURE()
         if (status != 0)
         {
           // Print out the measurement:
+          
           Serial.print("absolute pressure: ");
           Serial.print(P,2);
           Serial.print(" mb, ");
@@ -375,10 +421,10 @@ void GETPRESSUREandTEMPERATURE()
           Serial2.print(p0,2);
           Serial2.println("hPa");
                     
-          lcd.setCursor(0,1);
-          lcd.print("Patm ");
-          lcd.print(p0,2);
-          lcd.print("hPa");
+          //lcd.setCursor(0,1);
+          //lcd.print("P:");
+          //lcd.print(p0,1);
+          //lcd.print("hPa");
 
           // On the other hand, if you want to determine your altitude from the pressure reading,
           // use the altitude function along with a baseline pressure (sea-level or other).
@@ -426,3 +472,55 @@ else
 }
 }
 
+void LCDTEXT1(){
+  
+  
+  lcd.setCursor(0,0);
+  lcd.print("atmPress ");
+  lcd.print(p0,0);
+  lcd.print("hPa     ");
+  
+  
+  lcd.setCursor(3,1);
+  lcd.print("       ");
+  lcd.setCursor(0,1);
+  lcd.print("ID");
+  lcd.print(ID);
+  lcd.setCursor(10,1);
+  lcd.print(T,1);
+  lcd.print((char)223);
+  lcd.print("C       ");
+     
+}
+
+void LCDTEXT2(){
+  
+  lcd.setCursor(0,0);
+  lcd.print(t.mday);
+  lcd.print(" ");
+  switch(t.mon){
+    case 1: lcd.print("JANUARY "); break;
+    case 2: lcd.print("FEBRUARY"); break;
+    case 3: lcd.print("  MART  "); break;
+    case 4: lcd.print("  APRIL "); break;
+    case 5: lcd.print("  MAY   "); break;
+    case 6: lcd.print("  JUNE  "); break;
+    case 7: lcd.print("  JULY  "); break;
+    case 8: lcd.print(" AUGUST "); break;
+    case 9: lcd.print("SEPTEMBR"); break;
+    case 10: lcd.print("OCTOMBER"); break;
+    case 11: lcd.print("NOVEMBRE"); break;
+    case 12: lcd.print("DECEMBER"); break;
+  }
+  lcd.print(" ");
+  lcd.print(t.year);
+  lcd.print("   ");
+  lcd.setCursor(0,1);
+  lcd.print("--- ");
+  lcd.print(t.hour);
+  lcd.print(":");
+  lcd.print(minutes);
+  lcd.print(":");
+  lcd.print(seconds);
+  lcd.print(" ---");
+}
