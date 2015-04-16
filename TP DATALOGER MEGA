@@ -42,8 +42,8 @@ unsigned long prev, interval =0;
 
 // -----------------------------Sd card-------------------
 #include <SPI.h> // sd card is conected to SPI 50,51,52,53 on mega 
-#include <SD.h> // sd card library. 
-
+#include <SdFat.h> // sd card library. 
+SdFat sd;
 const int chipSelect = 53; // CS on mega is 53
 
 // -------------- global variables --------------------
@@ -84,7 +84,7 @@ void setup()
   lcd.print("SD card init...  "); // print the message to lcd
   delay(1000); // time to read message
   
-  if (!SD.begin(chipSelect)){
+  if (!sd.begin(chipSelect)){
     Serial.println("CARD FAILED OR NOT INSERTED");
     lcd.clear();
     lcd.setCursor(0,0);
@@ -99,7 +99,7 @@ void setup()
   lcd.print("   SD card OK    ");
   delay(1000);
   
-  File logFile = SD.open("TPLOG.csv", FILE_WRITE); //writing the header text in sd card to TPLOG.csv
+  File logFile = sd.open("TPLOG.csv", FILE_WRITE); //writing the header text in sd card to TPLOG.csv
   if(logFile)
   {
     logFile.println("Starting new record"); // usefull when searching start of records
@@ -112,7 +112,7 @@ else{
   Serial.print("Coldn`t open file");
 }
   
-  File delayFile = SD.open("DELAY.txt"); // open and read the DELAY.txt file in SD card
+  File delayFile = sd.open("DELAY.txt"); // open and read the DELAY.txt file in SD card
   if (delayFile) 
   {
     
@@ -180,7 +180,7 @@ void loop()
     else
     lcdState=false;
   }
-  astButtonState = buttonState; // ----------------------end of debouce for Right------
+  lastButtonState = buttonState; // ----------------------end of debouce for Right------
   
   
   GETTIME();// receiving Time data
@@ -455,7 +455,7 @@ void SDCARDRECORDING()
 String dataString =String(ID)+", "+ String(t.mday)+"/"+ String(t.mon)+ "/"+ String(t.year)+ ", " + String(t.hour)+":"+String(minutes)+ ":" +String(seconds)+ ", "+String(T,2)+", " +String(p0,2);
 
 
-File logFile = SD.open("TPLOG.csv", FILE_WRITE);
+File logFile = sd.open("TPLOG.csv", FILE_WRITE);
 if (logFile)
 {
   logFile.println(dataString);
@@ -524,3 +524,4 @@ void LCDTEXT2(){
   lcd.print(seconds);
   lcd.print(" ---");
 }
+
