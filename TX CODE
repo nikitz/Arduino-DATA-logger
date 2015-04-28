@@ -1,0 +1,98 @@
+
+
+#include <SPI.h>
+#include "nRF24L01.h"
+#include "RF24.h"
+
+RF24 radio(9, 10);
+const uint64_t pipes[2] = {0xF0F0F0F0E1LL, 0xF0F0F0F0D2LL};
+
+typedef struct{
+  
+  int A;
+  int B;
+  float C;
+  float D;
+  
+} dataValues_t;
+
+dataValues_t nanoSend;
+
+
+void setup()
+{
+  Serial.begin(57600);
+  radio.begin();
+  // optionally, increase the delay between retries & # of retries
+  //radio.setRetries(15,15);
+  //radio.setPayloadSize(32);
+  //radio.printDetails();
+  radio.openWritingPipe(pipes[0]);
+  radio.openReadingPipe(1, pipes[1]);
+  
+  //radio.startListening();
+  
+}
+
+void loop()
+{
+  
+  
+  unsigned long time = millis();
+  const byte NumSamples = 20;
+  float sumSamples = 0;
+  
+  for (int i= 0; i<NumSamples; i++){
+    sumSamples += analogRead(A0);
+    delay(10);
+  }
+  float temperatureValue1 =(500*(sumSamples/NumSamples)/1024);
+  float  temperatureValue2 = (temperatureValue1/2) ;
+  int Value1 = 15;
+  int Value2 = 2589;
+
+nanoSend.A = Value1;
+nanoSend.B = Value2;
+nanoSend.C = temperatureValue1;
+nanoSend.D = temperatureValue2;
+
+
+Serial.print("Sending data ...");
+
+    radio.stopListening();
+    bool ok = radio.write(&nanoSend, sizeof(nanoSend));
+    radio.startListening();
+
+   
+unsigned long start_wait_at = millis();
+bool timeout = false;
+while (!radio.available() && !timeout)
+  if (millis() - start_wait_at >250)
+  timeout = true;
+  
+  if (timeout)
+  {
+    Serial.print("Failed, responce time out ");
+  }
+    else
+   {
+   radio.read(&nanoSend, sizeof(nanoSend));
+   }
+  
+   Serial.print("DATA 1 is:");
+   Serial.println(nanoSend.A);
+ 
+   Serial.print("DATA 2 is:");
+   Serial.println(nanoSend.B);
+   
+   Serial.print("DATA 3 is:");
+   Serial.println(nanoSend.C);
+ 
+   Serial.print("DATA 4 is:");
+   Serial.println(nanoSend.D);
+   
+   delay(5000);
+}
+
+// sd cards info test 
+
