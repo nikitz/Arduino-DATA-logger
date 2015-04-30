@@ -42,9 +42,28 @@ unsigned long prev, interval =0;
 
 // -----------------------------Sd card-------------------
 #include <SPI.h> // sd card is conected to SPI 50,51,52,53 on mega 
-#include <SD.h> // sd card library. 
-
+#include <SdFat.h> // sd card library. 
+SdFat sd;
 const int chipSelect = 53; // CS on mega is 53
+
+// -------------------------- nrf24l01 maiacbugs library---------
+// Radio set up 
+#include "nRF24L01.h"
+#include "RF24.h"
+
+typedef struct{
+  
+  int A; // int for test set to 15
+  int B; // int set to 2589
+  float C; // float temp from lm35 
+  float D; //temp /2 
+  
+} dataValues_t;
+
+dataValues_t nanoSend; // struct name
+
+RF24 radio(29,28);// cs ce pin 
+const uint64_t pipes[2] = {0xF0F0F0F0E1LL, 0xF0F0F0F0D2LL}; // reading and sending pipe
 
 // -------------- global variables --------------------
 struct ts t; // used in GETTIME and needed in loop for print command
@@ -70,10 +89,16 @@ void setup()
   Serial.begin(9600); // pc serial init
   Serial2.begin(57600); // BT dongle setup for baud 57600. Conect RX of BT to TX2-16 and TX of BT to RX-17 on MEGA
   Wire.begin();// IIC or I2C 
+  //setupRadio();
+  radio.begin();
+    radio.openWritingPipe(pipes[1]);
+    radio.openReadingPipe(1, pipes[0]);
+    radio.startListening();
+  
   
   lcd.clear(); // erase lcd 
   lcd.setCursor(0,0); // set the cursor on upper line 
-  lcd.print("DATA LOGGER 1.3b "); // print the welcome message to lcd
+  lcd.print("DATA LOGGER 1.5b "); // print the welcome message to lcd
   lcd.setCursor(0,1);
   lcd.print("   LOADING ...");
   delay(1500);
@@ -84,7 +109,7 @@ void setup()
   lcd.print("SD card init...  "); // print the message to lcd
   delay(1000); // time to read message
   
-  if (!SD.begin(chipSelect)){
+  if (!sd.begin(chipSelect)){
     Serial.println("CARD FAILED OR NOT INSERTED");
     lcd.clear();
     lcd.setCursor(0,0);
@@ -99,11 +124,11 @@ void setup()
   lcd.print("   SD card OK    ");
   delay(1000);
   
-  File logFile = SD.open("TPLOG.csv", FILE_WRITE); //writing the header text in sd card to TPLOG.csv
+  File logFile = sd.open("TPLOG.csv", FILE_WRITE); //writing the header text in sd card to TPLOG.csv
   if(logFile)
   {
     logFile.println("Starting new record"); // usefull when searching start of records
-    String header ="ID, DATE, TIME, TEMPERATURE, atmPRESSURE";
+    String header ="ID, DATE, TIME, TEMPERATURE, atmPRESSURE, NODE ID, NODE DATA";
     logFile.println(header); // writes the above text as first row. 
     logFile.close();
     //Serial.println(header); // for test only 
@@ -112,7 +137,7 @@ else{
   Serial.print("Coldn`t open file");
 }
   
-  File delayFile = SD.open("DELAY.txt"); // open and read the DELAY.txt file in SD card
+  File delayFile = sd.open("DELAY.txt"); // open and read the DELAY.txt file in SD card
   if (delayFile) 
   {
     
@@ -171,7 +196,8 @@ lcd.clear();
 
 void loop()
 {
-   
+  
+  
   buttonState = analogRead(0);        // --------------Button Debounce for RIGHT------
   if(buttonState != lastButtonState)
   if (buttonState == LOW ){
@@ -180,11 +206,12 @@ void loop()
     else
     lcdState=false;
   }
-  astButtonState = buttonState; // ----------------------end of debouce for Right------
+  lastButtonState = buttonState; // ----------------------end of debouce for Right------
   
   
   GETTIME();// receiving Time data
   GETPRESSUREandTEMPERATURE();// receive Data and hour data
+  GET_WIFI_DATA(); // receive data from remote sensors
   if(lcdState == false){
  Serial.println();
     Serial.print(lcdState);
@@ -206,7 +233,7 @@ void loop()
     }
     previousMillis = currentMillis;
   SDCARDRECORDING(); // record the data to SD
-  ID = ID+1; // increase the number of every measurment 
+  ID = ID+1; // increase the ID number of every measurment 
     }
   }
 
@@ -233,47 +260,47 @@ void GETTIME ()
 
         
         Serial.print(t.mday);
-         Serial2.print(t.mday); // BT SERIAL PRINT TEST working 
+        // Serial2.print(t.mday); // BT SERIAL PRINT TEST working 
 
         printMonth(t.mon);
         
         
         Serial.print(t.year);
-        Serial2.print(t.year);
+        //Serial2.print(t.year);
         Serial.print(" ");
-        Serial2.print(" ");
+       // Serial2.print(" ");
         
         Serial.print(t.hour);
-        Serial2.print(t.hour);
+        //Serial2.print(t.hour);
         
         Serial.print(":");
-        Serial2.print(":");
+        //Serial2.print(":");
         
         if(t.min<10)
         {
           
           Serial.print("0");
-          Serial2.print("0");
+          //Serial2.print("0");
           minutes = "0"+String(t.min);
         }else{
         
         Serial.print(t.min);
-        Serial2.print(t.min);
+        //Serial2.print(t.min);
         
         Serial.print(":");
-        Serial2.print(":");
+        //Serial2.print(":");
         minutes = String(t.min);
         }
         if(t.sec<10)
         {
           
           Serial.print("0");
-          Serial2.print("0");
+          //Serial2.print("0");
           seconds = "0"+String(t.sec);
         }else{
         
         Serial.println(t.sec);
-        Serial2.println(t.sec);
+        //Serial2.println(t.sec);
         seconds = String(t.sec);
         /*lcd.setCursor(0,0);
         lcd.print(t.mday);
@@ -299,19 +326,19 @@ void printMonth(int month)
 {
   switch(month)
   {
-    case 1: Serial.print(" January "); Serial2.print("JANUARY");break;
-    case 2: Serial.print(" February "); Serial2.print("FEBRYARY");break;
-    case 3: Serial.print(" March "); Serial2.print("MARCH");break;
-    case 4: Serial.print(" April ");Serial2.print("APRIL");break;
-    case 5: Serial.print(" May ");Serial2.print("MAY");break;
-    case 6: Serial.print(" June ");Serial2.print("JUNE");break;
-    case 7: Serial.print(" July ");Serial2.print("JULY");break;
-    case 8: Serial.print(" August ");Serial2.print("AUGUST");break;
-    case 9: Serial.print(" September ");Serial2.print("SEPTEMBER");break;
-    case 10: Serial.print(" October ");Serial2.print("OCTOBER");break;
-    case 11: Serial.print(" November ");Serial2.print("NOVEMBER");break;
-    case 12: Serial.print(" December ");Serial2.print("DECEMBER");break;
-    default: Serial.print(" Error ");Serial2.print("ERROR");break;
+    case 1: Serial.print(" January "); break;
+    case 2: Serial.print(" February "); break;
+    case 3: Serial.print(" March "); break;
+    case 4: Serial.print(" April ");break;
+    case 5: Serial.print(" May ");break;
+    case 6: Serial.print(" June ");break;
+    case 7: Serial.print(" July ");break;
+    case 8: Serial.print(" August ");break;
+    case 9: Serial.print(" September ");break;
+    case 10: Serial.print(" October ");break;
+    case 11: Serial.print(" November ");break;
+    case 12: Serial.print(" December ");break;
+    default: Serial.print(" Error ");break;
   } 
 }
 
@@ -361,17 +388,12 @@ void GETPRESSUREandTEMPERATURE()
             // Print out the measurement:
       Serial.print("temperature: ");
       Serial.print(T,2);
-      Serial2.print("TEMPERATURE IS: ");
-      Serial2.print(T,2);
-      Serial2.print((char)176);
-      Serial2.println("C");
+     // Serial2.print("TEMPERATURE IS: ");
+     // Serial2.print(T,2);
+     //Serial2.print((char)176);
+     // Serial2.println("C");
       
-      //lcd.setCursor(9,1);
-     //lcd.print(" T ");
-      //lcd.print(T,2);
-      //lcd.print((char)223);
-     //lcd.print("C");
-      
+            
       Serial.print(" deg C, ");
       Serial.print((9.0/5.0)*T+32.0,2);
       Serial.println(" deg F");
@@ -417,9 +439,9 @@ void GETPRESSUREandTEMPERATURE()
           Serial.print(p0*0.0295333727,2);
           Serial.println(" inHg");
           
-          Serial2.print("ATMOSPHERIC PRESSURE IS ");
-          Serial2.print(p0,2);
-          Serial2.println("hPa");
+          //Serial2.print("ATMOSPHERIC PRESSURE IS ");
+          //Serial2.print(p0,2);
+          //Serial2.println("hPa");
                     
           //lcd.setCursor(0,1);
           //lcd.print("P:");
@@ -452,10 +474,10 @@ void GETPRESSUREandTEMPERATURE()
 void SDCARDRECORDING()
 {
 // ----------------create data string and write to sd card
-String dataString =String(ID)+", "+ String(t.mday)+"/"+ String(t.mon)+ "/"+ String(t.year)+ ", " + String(t.hour)+":"+String(minutes)+ ":" +String(seconds)+ ", "+String(T,2)+", " +String(p0,2);
+String dataString =String(ID)+", "+ String(t.mday)+"/"+ String(t.mon)+ "/"+ String(t.year)+ ", " + String(t.hour)+":"+String(minutes)+ ":" +String(seconds)+ ", "+String(T,2)+", " +String(p0,2)+","+ String(nanoSend.A)+","+String(nanoSend.C);;
 
 
-File logFile = SD.open("TPLOG.csv", FILE_WRITE);
+File logFile = sd.open("TPLOG.csv", FILE_WRITE);
 if (logFile)
 {
   logFile.println(dataString);
@@ -523,4 +545,21 @@ void LCDTEXT2(){
   lcd.print(":");
   lcd.print(seconds);
   lcd.print(" ---");
+}
+
+
+void GET_WIFI_DATA(){
+
+ if (radio.available())
+  {
+    bool done  = false;
+      while (!done)
+      {
+        done = radio.read(&nanoSend, sizeof(nanoSend));
+      }
+      radio.stopListening();
+      radio.write(&nanoSend, sizeof(nanoSend));
+      radio.startListening();
+  }
+    
 }
