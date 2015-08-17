@@ -8,8 +8,8 @@ It is build from:
 5. ZS-042 real time clock RTC with DS3231 chip if you want to use this board for a long time like me,  
 with a normal cr2032 batery, you will have to cut the trace between the diode 5 and resistor 4 on the back. 
 You will have to set it with another sketch. There is a example in the library.  
-6 . BT dongle -  I am usin it, to check from time to time how is it woirking.
-7. in future Iam planing to conect and few K type Temp sensors
+6 . BT dongle -  I am usin it, to check from time to time how is it working.
+7. Conected with nrf24 node, it has two temp sensors DS18B20 , reports battery voltage and ID number of node.
 
 */
 
