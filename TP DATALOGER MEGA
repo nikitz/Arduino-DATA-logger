@@ -53,10 +53,10 @@ const int chipSelect = 53; // CS on mega is 53
 
 typedef struct{
   
-  int A; // int for test set to 15
-  int B; // int set to 2589
-  float C; // float temp from lm35 
-  float D; //temp /2 
+  int A; // ID of remote node set to 1
+  float B; //Battery voltage 
+  float C; // float temp from sensor 1 
+  float D; // float temp from sensor 2  
   
 } dataValues_t;
 
@@ -474,7 +474,8 @@ void GETPRESSUREandTEMPERATURE()
 void SDCARDRECORDING()
 {
 // ----------------create data string and write to sd card
-String dataString =String(ID)+", "+ String(t.mday)+"/"+ String(t.mon)+ "/"+ String(t.year)+ ", " + String(t.hour)+":"+String(minutes)+ ":" +String(seconds)+ ", "+String(T,2)+", " +String(p0,2)+","+ String(nanoSend.A)+","+String(nanoSend.C);;
+// ID of record, data, time, local temp , pressure, node number, battery voltage, sensor 1 temp, senosor2 temp
+String dataString =String(ID)+", "+ String(t.mday)+"/"+ String(t.mon)+ "/"+ String(t.year)+ ", " + String(t.hour)+":"+String(minutes)+ ":" +String(seconds)+ ", "+String(T,2)+", " +String(p0,2)+","+ String(nanoSend.A)+","+String(nanoSend.B)+","+ String(nanoSend.C)+","+String(nanoSend.D);
 
 
 File logFile = sd.open("TPLOG.csv", FILE_WRITE);
