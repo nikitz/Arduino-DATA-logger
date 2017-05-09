@@ -1,3 +1,4 @@
+
 /* this is the first try to create TIME PRESSURE TEMPERATURE datalogger. It was a mix from few examples I saw in the net, 
 which I have modified a little. IT records all the data in micro SD card.
 It is build from:
@@ -53,10 +54,10 @@ const int chipSelect = 53; // CS on mega is 53
 
 typedef struct{
   
-  int A; // int for test set to 15
-  int B; // int set to 2589
-  float C; // float temp from lm35 
-  float D; //temp /2 
+  int A; // remote id 
+  float B; // batt voltage
+  float C; // float temp bmp18b20
+  float D; //  float temp bmp18b20
   
 } dataValues_t;
 
@@ -75,7 +76,9 @@ boolean lcdState = false;
 int buttonState = 0;
 int lastButtonState = 0;
 
+//==================include jsson library
 
+#include <ArduinoJson.h>
 
 //####################################### SETUP () ############################################
 
@@ -145,7 +148,7 @@ else{
     float decade = pow(10,(delayFile.available()-1)); //read byte by byte the data from sd card 
      while (delayFile.available()) 
      {
-    	  float tempData = (delayFile.read() - '0');
+        float tempData = (delayFile.read() - '0');
           wait = tempData*decade*1000 + wait; // convert sec to millis
             decade = decade/10;         
                                    
@@ -190,6 +193,12 @@ else{
     while(1); // Pause forever.
   }
 lcd.clear();
+
+// Memory pool for JSON object tree.
+// Inside the brackets, 200 is the size of the pool in bytes.
+// If the JSON object is more complex, you need to increase that value.
+
+
 }
 
 // ############################# LOOP ()######################################################
@@ -473,8 +482,23 @@ void GETPRESSUREandTEMPERATURE()
 
 void SDCARDRECORDING()
 {
+ StaticJsonBuffer<200> jsonBuffer;
+ JsonObject& root = jsonBuffer.createObject();
+ root["ID_measure_number"] = (ID);
+ root["Day"] = (t.mday);
+ root["Month"] = (t.mon);
+ root["Year"] = (t.year);
+ root["Time"] = String(t.hour)+":"+String(minutes)+ ":" +String(seconds);
+ root["TempSensor1"] = String(T,2);
+ root["AtmPressure"] = String(p0,2);
+ root["RemoteNodeID"] = (nanoSend.A);
+ root["BattVoltage"] = String(nanoSend.B);
+ root["RemoteTempSensor1"] = String(nanoSend.C);
+ root["RemoteTempSensor2"] = String(nanoSend.D);
+ 
+ 
 // ----------------create data string and write to sd card
-String dataString =String(ID)+", "+ String(t.mday)+"/"+ String(t.mon)+ "/"+ String(t.year)+ ", " + String(t.hour)+":"+String(minutes)+ ":" +String(seconds)+ ", "+String(T,2)+", " +String(p0,2)+","+ String(nanoSend.A)+","+String(nanoSend.C);;
+String dataString =String(ID)+", "+ String(t.mday)+"/"+ String(t.mon)+ "/"+ String(t.year)+ ", " + String(t.hour)+":"+String(minutes)+ ":" +String(seconds)+ ", "+String(T,2)+", " +String(p0,2)+","+ String(nanoSend.A)+","+String(nanoSend.B)+ String(nanoSend.C)+","+String(nanoSend.D);
 
 
 File logFile = sd.open("TPLOG.csv", FILE_WRITE);
@@ -484,9 +508,9 @@ if (logFile)
   logFile.close();
   Serial.print("SAVED DATA TO SD CARD IS:   ");
   Serial.println (dataString);
-  Serial2.print("SAVED DATA TO SD CARD IS:   ");
-  Serial2.println (dataString);
-  Serial.println();
+  root.printTo(Serial2);
+  Serial2.println(); 
+
 }
 else
 {
