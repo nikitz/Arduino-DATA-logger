@@ -54,10 +54,10 @@ const int chipSelect = 53; // CS on mega is 53
 
 typedef struct{
   
-  int A; // remote id 
-  float B; // batt voltage
-  float C; // float temp bmp18b20
-  float D; //  float temp bmp18b20
+  int A = 0; // remote id 
+  float B = 0; // batt voltage
+  float C = 0 ; // float temp bmp18b20
+  float D = 0; //  float temp bmp18b20
   
 } dataValues_t;
 
@@ -205,7 +205,11 @@ lcd.clear();
 
 void loop()
 {
-  
+  // clear last recorded data
+  nanoSend.A = 0;    
+  nanoSend.B = 0; 
+  nanoSend.C = 0 ; 
+  nanoSend.D = 0; 
   
   buttonState = analogRead(0);        // --------------Button Debounce for RIGHT------
   if(buttonState != lastButtonState)
