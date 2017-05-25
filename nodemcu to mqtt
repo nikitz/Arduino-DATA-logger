@@ -1,0 +1,267 @@
+//reads two fixed ds18b20 sensord and sends the data to mqtt server of io.adafruit topics
+
+/***************************************************
+  Adafruit MQTT Library ESP8266 Adafruit IO SSL/TLS example
+
+  Must use the latest version of ESP8266 Arduino from:
+    https://github.com/esp8266/Arduino
+
+  Works great with Adafruit's Huzzah ESP board & Feather
+  ----> https://www.adafruit.com/product/2471
+  ----> https://www.adafruit.com/products/2821
+
+  Adafruit invests time and resources providing this open source code,
+  please support Adafruit and open-source hardware by purchasing
+  products from Adafruit!
+
+  Written by Tony DiCola for Adafruit Industries.
+  SSL/TLS additions by Todd Treece for Adafruit Industries.
+  MIT license, all text above must be included in any redistribution
+ ****************************************************/
+#include <ESP8266WiFi.h>
+#include "Adafruit_MQTT.h"
+#include "Adafruit_MQTT_Client.h"
+#include <OneWire.h>
+
+OneWire  ds(2);  // on pin 2 (a 4.7K resistor is necessary)
+/************************* WiFi Access Point *********************************/
+
+#define WLAN_SSID       "your ssid"
+#define WLAN_PASS       "your password"
+
+/************************* Adafruit.io Setup *********************************/
+
+#define AIO_SERVER      "io.adafruit.com"
+#define AIO_SERVERPORT  8883                   // 8883 for MQTTS
+#define AIO_USERNAME    your username
+#define AIO_KEY         "your AIO key "
+
+/************ Global State (you don't need to change this!) ******************/
+
+// WiFiFlientSecure for SSL/TLS support
+WiFiClientSecure client;
+
+// Setup the MQTT client class by passing in the WiFi client and MQTT server and login details.
+Adafruit_MQTT_Client mqtt(&client, AIO_SERVER, AIO_SERVERPORT, AIO_USERNAME, AIO_KEY);
+
+// io.adafruit.com SHA1 fingerprint
+const char* fingerprint = "26 96 1C 2A 51 07 FD 15 80 96 93 AE F7 32 CE B9 0D 01 55 C4";
+
+//================================================
+float Sensor3Value = 0;
+float Sensor4Value = 0;
+
+/****************************** Feeds ***************************************/
+
+// Setup a feed called 'test' for publishing.
+// Notice MQTT paths for AIO follow the form: <username>/feeds/<feedname>
+Adafruit_MQTT_Publish Sensor1 = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/feeds/esp_sensor1_value");
+Adafruit_MQTT_Publish Sensor2 = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/feeds/esp_sensor2_value");
+/*************************** Sketch Code ************************************/
+
+// Bug workaround for Arduino 1.6.6, it seems to need a function declaration
+// for some reason (only affects ESP8266, likely an arduino-builder bug).
+void MQTT_connect();
+
+void setup() {
+  Serial.begin(115200);
+  if (WiFi.status() != WL_CONNECTED) { // FIX FOR USING 2.3.0 CORE (only .begin if not connected)
+WiFi.begin(WLAN_SSID, WLAN_PASS); // connect to the network
+}
+while (WiFi.status() != WL_CONNECTED) {
+delay(500);
+Serial.print(".");
+}
+  
+  
+}
+
+uint32_t x=0;
+
+
+// ======================================================
+
+void loop() {
+  // Ensure the connection to the MQTT server is alive (this will make the first
+  // connection and automatically reconnect when disconnected).  See the MQTT_connect
+  // function definition further below.
+ 
+ ReadTempSensor(); // func to read a fixed by adrr bs18b20 data
+ MQTT_connect();
+
+  // Now we can publish 1st stuff!
+  
+  Serial.print(F("\nSending val "));
+  Serial.print(Sensor4Value);
+  Serial.print(F(" to test feed..."));
+  if (! Sensor1.publish(Sensor4Value)) {
+    Serial.println(F("Failed"));
+  } else {
+    Serial.println(F("OK!"));
+  }
+// Now we can publish 2nd stuff!
+  
+  Serial.print(F("\nSending val "));
+  Serial.print(Sensor3Value);
+  Serial.print(F(" to test feed..."));
+  if (! Sensor2.publish(Sensor3Value)) {
+    Serial.println(F("Failed"));
+  } else {
+    Serial.println(F("OK!"));
+  }
+  
+  // wait a couple seconds to avoid rate limit
+  delay(300000);// 5minutes
+
+}
+
+
+
+void MQTT_connect() {
+  int8_t ret;
+
+  // Stop if already connected.
+  if (mqtt.connected()) {
+    return;
+  }
+
+  Serial.print("Connecting to MQTT... ");
+
+  uint8_t retries = 3;
+  while ((ret = mqtt.connect()) != 0) { // connect will return 0 for connected
+       Serial.println(mqtt.connectErrorString(ret));
+       Serial.println("Retrying MQTT connection in 5 seconds...");
+       mqtt.disconnect();
+       delay(5000);  // wait 5 seconds
+       retries--;
+       if (retries == 0) {
+         // basically die and wait for WDT to reset me
+         while (1);
+       }
+  }
+
+  Serial.println("MQTT Connected!");
+}
+
+// function to read to ds18b20 sensor with fixed addreses
+void ReadTempSensor (){
+ 
+ //-------------------ds18b20-------------------
+  byte i;
+  byte present = 0;
+  byte type_s;
+  byte data[12];
+  // byte Sensor_1_ID[8] = {place here you sensors data}; 
+  //byte Sensor_1_ID[8] = {0x28, 0xFF, 0x29, 0x0D, 0x64, 0x14, 0x02, 0x8E}; // one white point 
+  //byte Sensor_2_ID[8] = {0x28, 0xFF, 0x08, 0xB8, 0x63, 0x14, 0x02, 0xD1}; // two white point
+  byte Sensor_3_ID[8] = {0x28, 0xFF, 0x18, 0xAE, 0x63, 0x14, 0x02, 0x9C}; // 3 white point
+  byte Sensor_4_ID[8] = {0x28, 0xFF, 0x97, 0xB7, 0x63, 0x14, 0x02, 0x93}; // 4 white point
+   
+
+ // --------------------read sensor1  ----------------------------------------------
+  ds.reset();
+  //ds.select(Sensor_1_ID);
+  ds.write(0xCC);
+  ds.write(0x44, 1);        // start conversion, with parasite power on at the end
+  
+  delay(1000);     // maybe 750ms is enough, maybe not
+  // we might do a ds.depower() here, but the reset will take care of it.
+  
+  present = ds.reset();
+  ds.select(Sensor_3_ID);    
+  ds.write(0xBE);         // Read Scratchpad
+  Serial.println("  ============================================");
+  Serial.print("  Sensor 1 Data = ");
+  Serial.print(present, HEX);
+  Serial.print(" ");
+  for ( i = 0; i < 9; i++) {           // we need 9 bytes
+    data[i] = ds.read();
+    Serial.print(data[i], HEX);
+    Serial.print(" ");
+  }
+  Serial.print(" CRC=");
+  Serial.print(OneWire::crc8(data, 8), HEX);
+  Serial.println();
+
+  // Convert the data to actual temperature
+  // because the result is a 16 bit signed integer, it should
+  // be stored to an "int16_t" type, which is always 16 bits
+  // even when compiled on a 32 bit processor.
+  int16_t raw = (data[1] << 8) | data[0];
+  if (type_s) {
+    raw = raw << 3; // 9 bit resolution default
+    if (data[7] == 0x10) {
+      // "count remain" gives full 12 bit resolution
+      raw = (raw & 0xFFF0) + 12 - data[6];
+    }
+  } else {
+    byte cfg = (data[4] & 0x60);
+    // at lower res, the low bits are undefined, so let's zero them
+    if (cfg == 0x00) raw = raw & ~7;  // 9 bit resolution, 93.75 ms
+    else if (cfg == 0x20) raw = raw & ~3; // 10 bit res, 187.5 ms
+    else if (cfg == 0x40) raw = raw & ~1; // 11 bit res, 375 ms
+    //// default is 12 bit resolution, 750 ms conversion time
+  }
+  Sensor3Value = (float)raw / 16.0;
+ // Sensor_3_temp = Sensor3Value; 
+  Serial.print("  Temperature = ");
+  Serial.print(Sensor3Value);
+  Serial.println(" Celsius, ");
+  Serial.println("  ============================================");
+  //Serial.print(Sensor_1_temp); for test 
+  
+  
+  
+  //-------------- read sensor2  --------------
+  
+  ds.reset();
+  present = ds.reset();
+  ds.select(Sensor_4_ID);
+  ds.write(0xBE);         // Read Scratchpad
+  //ds.write(0x44, 1);        // start conversion, with parasite power on at the end
+  
+  //delay(1000);     // maybe 750ms is enough, maybe not
+  // we might do a ds.depower() here, but the reset will take care of it.
+  
+ 
+  //ds.select(Sensor_2_ID);    
+  
+
+  Serial.print("  Sensor 2 Data = ");
+  Serial.print(present, HEX);
+  Serial.print(" ");
+  for ( i = 0; i < 9; i++) {           // we need 9 bytes
+    data[i] = ds.read();
+    Serial.print(data[i], HEX);
+    Serial.print(" ");
+  }
+  Serial.print(" CRC=");
+  Serial.print(OneWire::crc8(data, 8), HEX);
+  Serial.println();
+  // Convert the data to actual temperature
+  // because the result is a 16 bit signed integer, it should
+  // be stored to an "int16_t" type, which is always 16 bits
+  // even when compiled on a 32 bit processor.
+  raw = (data[1] << 8) | data[0];
+  if (type_s) {
+    raw = raw << 3; // 9 bit resolution default
+    if (data[7] == 0x10) {
+      // "count remain" gives full 12 bit resolution
+      raw = (raw & 0xFFF0) + 12 - data[6];
+    }
+  } else {
+    byte cfg = (data[4] & 0x60);
+    // at lower res, the low bits are undefined, so let's zero them
+    if (cfg == 0x00) raw = raw & ~7;  // 9 bit resolution, 93.75 ms
+    else if (cfg == 0x20) raw = raw & ~3; // 10 bit res, 187.5 ms
+    else if (cfg == 0x40) raw = raw & ~1; // 11 bit res, 375 ms
+    //// default is 12 bit resolution, 750 ms conversion time
+  }
+  Sensor4Value = (float)raw / 16.0;
+  //Sensor_4_temp = Sensor4Value; 
+  Serial.print("  Temperature = ");
+  Serial.print(Sensor4Value);
+  Serial.println(" Celsius, ");
+  Serial.println("  ============================================");
+  
+ }
