@@ -1,0 +1,240 @@
+// **** INCLUDES *****
+#include "LowPower.h"
+const byte LED = 13; // moze da se nalozi zamiana s drug pin ako prechi na spi
+const byte VCC = 11; // pin to power the DS18b20 only for measurement
+unsigned int counter;
+int IdNode = 1;
+//измерва напрежениет на батерията записва данните в BatVoltage в mV 
+long BatVoltage = 0; // globala declaration of long variable
+
+#include <OneWire.h>
+OneWire  ds(5);  // on pin 10 (a 4.7K resistor is necessary)
+
+#include <SPI.h>
+#include "nRF24L01.h"
+#include "RF24.h"
+RF24 radio(9, 10);
+const uint64_t pipes[2] = {0xF0F0F0F0E1LL, 0xF0F0F0F0D2LL};
+
+typedef struct{
+  
+  int A;
+  float B;
+  float C;
+  float D;
+  
+} dataValues_t;
+
+dataValues_t nanoSend;
+
+float Sensor_1_temp = 0;
+float Sensor_2_temp =0;
+
+
+
+//====================SETUP====================================
+void setup()
+{
+pinMode(VCC, OUTPUT);  // prepare pin as output
+digitalWrite (LED, HIGH);// indicate setup long blink
+    delay(500);
+digitalWrite (LED, LOW);
+}
+
+//====================LOOP=====================================
+void loop() 
+{
+  // Enter idle state for 8 s with the rest of peripherals turned off
+  // ATmega328P
+  LowPower.idle(SLEEP_8S, ADC_OFF, TIMER2_OFF, TIMER1_OFF, TIMER0_OFF, 
+                SPI_OFF, USART0_OFF, TWI_OFF);
+ //-------------   -----------------------
+ if ((++counter & 1) == 0) // когато COUNTER = на "x" дава 0 и изпълнява код
+    // 3*8 dava priblizitelno 36 sec
+    {
+    // ===================код за изпълнение на всеки X*8sec============================ 
+    digitalWrite (LED, HIGH);
+    delay(25);
+    digitalWrite (LED, LOW);
+    
+    ReadTempSensor ();
+    ReadBatteryVoltage(); // return "BatVoltage" measured from battery in mV
+    
+    digitalWrite (LED, HIGH);
+    delay(25);
+    digitalWrite (LED, LOW);
+    delay(25);
+    digitalWrite (LED, HIGH);
+    delay(25);
+    digitalWrite (LED, LOW);
+    
+    } // end of 64 seconds being up
+}
+
+// ====================custom prog========================
+void ReadBatteryVoltage(){
+  // Read 1.1V reference against AVcc
+  // set the reference to Vcc and the measurement to the internal 1.1V reference
+  ADMUX = _BV(REFS0) | _BV(MUX3) | _BV(MUX2) | _BV(MUX1);
+  delay(2); // Wait for Vref to settle
+  ADCSRA |= _BV(ADSC); // Start conversion
+  while (bit_is_set(ADCSRA,ADSC)); // measuring
+  uint8_t low  = ADCL; // must read ADCL first - it then locks ADCH  
+  uint8_t high = ADCH; // unlocks both
+  BatVoltage= (high<<8) | low;
+  BatVoltage = 1125300L / BatVoltage; // Calculate Vcc (in mV); 1125300 = 1.1*1023*1000
+
+  Serial.begin(9600);
+  Serial.print("BATTERY VOLTAGE IS:");
+  Serial.print(BatVoltage);
+  Serial.println(" mV");
+  Serial.flush();
+  Serial.end();
+}
+
+void ReadTempSensor (){
+ 
+ //-------------------ds18b20-------------------
+  Serial.begin(9600);
+ 
+  byte i;
+  byte present = 0;
+  byte type_s;
+  byte data[12];
+  //byte Sensor_1_ID[8] = {0x28, 0xFF, 0x29, 0x0D, 0x64, 0x14, 0x02, 0x8E}; // one white point 
+  //byte Sensor_2_ID[8] = {0x28, 0xFF, 0x08, 0xB8, 0x63, 0x14, 0x02, 0xD1}; // two white point
+  byte Sensor_3_ID[8] = {0x28, 0xFF, 0x18, 0xAE, 0x63, 0x14, 0x02, 0x9C}; // 3 white point
+  byte Sensor_4_ID[8] = {0x28, 0xFF, 0x97, 0xB7, 0x63, 0x14, 0x02, 0x93}; // 4 white point
+  float Sensor3Value;// 
+  float Sensor4Value;
+  
+  
+
+ // --------------------sensor 1 reading ----------------------------------------------
+  digitalWrite(VCC, HIGH);
+  delay(10);
+  ds.reset();
+  //ds.select(Sensor_1_ID);
+  ds.write(0xCC);
+  ds.write(0x44, 1);        // start conversion, with parasite power on at the end
+  
+  delay(800);     // maybe 750ms is enough, maybe not
+  // we might do a ds.depower() here, but the reset will take care of it.
+  
+  present = ds.reset();
+  ds.select(Sensor_3_ID);    
+  ds.write(0xBE);         // Read Scratchpad
+  
+  Serial.println("  ============================================");
+  Serial.print("  Sensor 1 Data = ");
+  Serial.print(present, HEX);
+  Serial.print(" ");
+  for ( i = 0; i < 9; i++) {           // we need 9 bytes
+    data[i] = ds.read();
+    Serial.print(data[i], HEX);
+    Serial.print(" ");
+  }
+  Serial.print(" CRC=");
+  Serial.print(OneWire::crc8(data, 8), HEX);
+  Serial.println();
+
+  // Convert the data to actual temperature
+  // because the result is a 16 bit signed integer, it should
+  // be stored to an "int16_t" type, which is always 16 bits
+  // even when compiled on a 32 bit processor.
+  int16_t raw = (data[1] << 8) | data[0];
+  if (type_s) {
+    raw = raw << 3; // 9 bit resolution default
+    if (data[7] == 0x10) {
+      // "count remain" gives full 12 bit resolution
+      raw = (raw & 0xFFF0) + 12 - data[6];
+    }
+  } else {
+    byte cfg = (data[4] & 0x60);
+    // at lower res, the low bits are undefined, so let's zero them
+    if (cfg == 0x00) raw = raw & ~7;  // 9 bit resolution, 93.75 ms
+    else if (cfg == 0x20) raw = raw & ~3; // 10 bit res, 187.5 ms
+    else if (cfg == 0x40) raw = raw & ~1; // 11 bit res, 375 ms
+    //// default is 12 bit resolution, 750 ms conversion time
+  }
+  Sensor3Value = (float)raw / 16.0;
+  Sensor_1_temp = Sensor3Value; 
+  Serial.print("  Temperature = ");
+  Serial.print(Sensor3Value);
+  Serial.println(" Celsius, ");
+  Serial.println("  ============================================");
+  //Serial.print(Sensor_1_temp); for test 
+  
+  
+  
+  //-------------- sensor 2 readings --------------
+  
+  ds.reset();
+  present = ds.reset();
+  ds.select(Sensor_4_ID);
+  ds.write(0xBE);         // Read Scratchpad
+  //ds.write(0x44, 1);        // start conversion, with parasite power on at the end
+  
+  //delay(1000);     // maybe 750ms is enough, maybe not
+  // we might do a ds.depower() here, but the reset will take care of it.
+  
+ 
+  //ds.select(Sensor_2_ID);    
+  
+
+  Serial.print("  Sensor 2 Data = ");
+  Serial.print(present, HEX);
+  Serial.print(" ");
+  for ( i = 0; i < 9; i++) {           // we need 9 bytes
+    data[i] = ds.read();
+    Serial.print(data[i], HEX);
+    Serial.print(" ");
+  }
+  Serial.print(" CRC=");
+  Serial.print(OneWire::crc8(data, 8), HEX);
+  Serial.println();
+  // Convert the data to actual temperature
+  // because the result is a 16 bit signed integer, it should
+  // be stored to an "int16_t" type, which is always 16 bits
+  // even when compiled on a 32 bit processor.
+  raw = (data[1] << 8) | data[0];
+  if (type_s) {
+    raw = raw << 3; // 9 bit resolution default
+    if (data[7] == 0x10) {
+      // "count remain" gives full 12 bit resolution
+      raw = (raw & 0xFFF0) + 12 - data[6];
+    }
+  } else {
+    byte cfg = (data[4] & 0x60);
+    // at lower res, the low bits are undefined, so let's zero them
+    if (cfg == 0x00) raw = raw & ~7;  // 9 bit resolution, 93.75 ms
+    else if (cfg == 0x20) raw = raw & ~3; // 10 bit res, 187.5 ms
+    else if (cfg == 0x40) raw = raw & ~1; // 11 bit res, 375 ms
+    //// default is 12 bit resolution, 750 ms conversion time
+  }
+  Sensor4Value = (float)raw / 16.0;
+  Sensor_2_temp = Sensor4Value; 
+  Serial.print("  Temperature = ");
+  Serial.print(Sensor4Value);
+  Serial.println(" Celsius, ");
+  Serial.println("  ============================================");
+  digitalWrite (VCC, LOW);
+ Serial.end();
+ }
+ void SendDataNRF (){
+  radio.begin();
+  delay(100);
+  radio.openWritingPipe(pipes[0]);
+  radio.openReadingPipe(1, pipes[1]);
+// prepare data to send 
+  nanoSend.A = IdNode;
+  nanoSend.B = BatVoltage;
+  nanoSend.C = Sensor_1_temp;
+  nanoSend.D = Sensor_2_temp;
+  // send all
+    radio.stopListening();
+    bool ok = radio.write(&nanoSend, sizeof(nanoSend));
+    radio.startListening();
+  radio.powerDown();
+  
+  }
