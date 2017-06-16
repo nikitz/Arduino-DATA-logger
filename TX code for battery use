@@ -1,7 +1,7 @@
 // **** INCLUDES *****
 #include "LowPower.h"
 const byte LED = 13; // moze da se nalozi zamiana s drug pin ako prechi na spi
-const byte VCC = 11; // pin to power the DS18b20 only for measurement
+const byte VCC = 3; // pin to power the DS18b20 only for measurement
 unsigned int counter;
 int IdNode = 1;
 //измерва напрежениет на батерията записва данните в BatVoltage в mV 
@@ -59,15 +59,21 @@ void loop()
     
     ReadTempSensor ();
     ReadBatteryVoltage(); // return "BatVoltage" measured from battery in mV
-    
+    SendDataNRF (); // send colected data to main node
+
+    digitalWrite (LED, LOW);
+    delay(100);
     digitalWrite (LED, HIGH);
     delay(25);
     digitalWrite (LED, LOW);
-    delay(25);
+    delay(100);
     digitalWrite (LED, HIGH);
     delay(25);
     digitalWrite (LED, LOW);
-    
+    delay(100);
+    digitalWrite (LED, HIGH);
+    delay(25);
+    digitalWrite (LED, LOW);
     } // end of 64 seconds being up
 }
 
