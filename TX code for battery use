@@ -1,6 +1,6 @@
 // **** INCLUDES *****
 #include "LowPower.h"
-const byte LED = 13; // moze da se nalozi zamiana s drug pin ako prechi na spi
+const byte LED = 4; // moze da se nalozi zamiana s drug pin ako prechi na spi
 const byte VCC = 3; // pin to power the DS18b20 only for measurement
 unsigned int counter;
 int IdNode = 1;
@@ -36,8 +36,9 @@ float Sensor_2_temp =0;
 void setup()
 {
 pinMode(VCC, OUTPUT);  // prepare pin as output
+pinMode(LED, OUTPUT);
 digitalWrite (LED, HIGH);// indicate setup long blink
-    delay(500);
+delay(500);
 digitalWrite (LED, LOW);
 }
 
