@@ -2,7 +2,11 @@
 #include "LowPower.h"
 const byte LED = 4; // moze da se nalozi zamiana s drug pin ako prechi na spi
 const byte VCC = 3; // pin to power the DS18b20 only for measurement
-unsigned int counter;
+
+
+int counter = 0 ; // used for sleep time 
+int sleep = 32 ; // enter the sleep time 6gives 55sec sleep 32= 5min
+
 int IdNode = 1;
 //измерва напрежениет на батерията записва данните в BatVoltage в mV 
 long BatVoltage = 0; // globala declaration of long variable
@@ -50,10 +54,9 @@ void loop()
   LowPower.idle(SLEEP_8S, ADC_OFF, TIMER2_OFF, TIMER1_OFF, TIMER0_OFF, 
                 SPI_OFF, USART0_OFF, TWI_OFF);
  //-------------   -----------------------
- if ((++counter & 1) == 0) // когато COUNTER = на "x" дава 0 и изпълнява код
-    // 3*8 dava priblizitelno 36 sec
+ if (++counter >= sleep) // compare if its time to act
     {
-    // ===================код за изпълнение на всеки X*8sec============================ 
+    // ===================код за изпълнение на всеки X sleep time min ============================ 
     digitalWrite (LED, HIGH);
     delay(25);
     digitalWrite (LED, LOW);
@@ -61,7 +64,7 @@ void loop()
     ReadTempSensor ();
     ReadBatteryVoltage(); // return "BatVoltage" measured from battery in mV
     SendDataNRF (); // send colected data to main node
-
+    counter = 0;
     digitalWrite (LED, LOW);
     delay(100);
     digitalWrite (LED, HIGH);
@@ -90,19 +93,20 @@ void ReadBatteryVoltage(){
   uint8_t high = ADCH; // unlocks both
   BatVoltage= (high<<8) | low;
   BatVoltage = 1125300L / BatVoltage; // Calculate Vcc (in mV); 1125300 = 1.1*1023*1000
+  //BatVoltage = 11253L / BatVoltage; // Calculate Vcc (in V); 1125300 = 1.1*1023*10
 
-  Serial.begin(9600);
-  Serial.print("BATTERY VOLTAGE IS:");
-  Serial.print(BatVoltage);
-  Serial.println(" mV");
-  Serial.flush();
-  Serial.end();
+  //Serial.begin(9600);
+  //Serial.print("BATTERY VOLTAGE IS:");
+  //Serial.print(BatVoltage);
+  //Serial.println(" mV");
+  //Serial.flush();
+  //Serial.end();
 }
 
 void ReadTempSensor (){
  
  //-------------------ds18b20-------------------
-  Serial.begin(9600);
+  //Serial.begin(9600);
  
   byte i;
   byte present = 0;
@@ -132,18 +136,18 @@ void ReadTempSensor (){
   ds.select(Sensor_3_ID);    
   ds.write(0xBE);         // Read Scratchpad
   
-  Serial.println("  ============================================");
-  Serial.print("  Sensor 1 Data = ");
-  Serial.print(present, HEX);
-  Serial.print(" ");
+  //Serial.println("  ============================================");
+  //Serial.print("  Sensor 1 Data = ");
+  //Serial.print(present, HEX);
+  //Serial.print(" ");
   for ( i = 0; i < 9; i++) {           // we need 9 bytes
     data[i] = ds.read();
-    Serial.print(data[i], HEX);
-    Serial.print(" ");
+    //Serial.print(data[i], HEX);
+    //Serial.print(" ");
   }
-  Serial.print(" CRC=");
-  Serial.print(OneWire::crc8(data, 8), HEX);
-  Serial.println();
+  //Serial.print(" CRC=");
+  //Serial.print(OneWire::crc8(data, 8), HEX);
+  //Serial.println();
 
   // Convert the data to actual temperature
   // because the result is a 16 bit signed integer, it should
@@ -166,10 +170,10 @@ void ReadTempSensor (){
   }
   Sensor3Value = (float)raw / 16.0;
   Sensor_1_temp = Sensor3Value; 
-  Serial.print("  Temperature = ");
-  Serial.print(Sensor3Value);
-  Serial.println(" Celsius, ");
-  Serial.println("  ============================================");
+  //Serial.print("  Temperature = ");
+  //Serial.print(Sensor3Value);
+  //Serial.println(" Celsius, ");
+  //Serial.println("  ============================================");
   //Serial.print(Sensor_1_temp); for test 
   
   
@@ -189,17 +193,17 @@ void ReadTempSensor (){
   //ds.select(Sensor_2_ID);    
   
 
-  Serial.print("  Sensor 2 Data = ");
-  Serial.print(present, HEX);
-  Serial.print(" ");
+  //Serial.print("  Sensor 2 Data = ");
+  //Serial.print(present, HEX);
+  //Serial.print(" ");
   for ( i = 0; i < 9; i++) {           // we need 9 bytes
     data[i] = ds.read();
-    Serial.print(data[i], HEX);
-    Serial.print(" ");
+    //Serial.print(data[i], HEX);
+    //Serial.print(" ");
   }
-  Serial.print(" CRC=");
-  Serial.print(OneWire::crc8(data, 8), HEX);
-  Serial.println();
+  //Serial.print(" CRC=");
+  //Serial.print(OneWire::crc8(data, 8), HEX);
+  //Serial.println();
   // Convert the data to actual temperature
   // because the result is a 16 bit signed integer, it should
   // be stored to an "int16_t" type, which is always 16 bits
@@ -221,12 +225,12 @@ void ReadTempSensor (){
   }
   Sensor4Value = (float)raw / 16.0;
   Sensor_2_temp = Sensor4Value; 
-  Serial.print("  Temperature = ");
-  Serial.print(Sensor4Value);
-  Serial.println(" Celsius, ");
-  Serial.println("  ============================================");
+  //Serial.print("  Temperature = ");
+  //Serial.print(Sensor4Value);
+  //Serial.println(" Celsius, ");
+  //Serial.println("  ============================================");
   digitalWrite (VCC, LOW);
- Serial.end();
+ //Serial.end();
  }
  void SendDataNRF (){
   radio.begin();
@@ -245,3 +249,4 @@ void ReadTempSensor (){
   radio.powerDown();
   
   }
+
