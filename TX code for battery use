@@ -1,11 +1,11 @@
 // **** INCLUDES *****
 #include "LowPower.h"
-const byte LED = 4; // moze da se nalozi zamiana s drug pin ako prechi na spi
+//const byte LED = 4; // moze da se nalozi zamiana s drug pin ako prechi na spi
 const byte VCC = 3; // pin to power the DS18b20 only for measurement
 
 
 int counter = 0 ; // used for sleep time 
-int sleep = 32 ; // enter the sleep time 6gives 55sec sleep 32= 5min
+int sleep = 16 ; // enter the sleep time 6gives 55sec sleep 32= 5min, promemnen na 16 za 2,5min
 
 int IdNode = 1;
 //измерва напрежениет на батерията записва данните в BatVoltage в mV 
@@ -40,10 +40,10 @@ float Sensor_2_temp =0;
 void setup()
 {
 pinMode(VCC, OUTPUT);  // prepare pin as output
-pinMode(LED, OUTPUT);
-digitalWrite (LED, HIGH);// indicate setup long blink
-delay(500);
-digitalWrite (LED, LOW);
+//pinMode(LED, OUTPUT);
+//digitalWrite (LED, HIGH);// indicate setup long blink
+//delay(500);
+//digitalWrite (LED, LOW);
 }
 
 //====================LOOP=====================================
@@ -57,15 +57,15 @@ void loop()
  if (++counter >= sleep) // compare if its time to act
     {
     // ===================код за изпълнение на всеки X sleep time min ============================ 
-    digitalWrite (LED, HIGH);
-    delay(25);
-    digitalWrite (LED, LOW);
+    //digitalWrite (LED, HIGH);
+    //delay(25);
+    //digitalWrite (LED, LOW);
     
     ReadTempSensor ();
     ReadBatteryVoltage(); // return "BatVoltage" measured from battery in mV
     SendDataNRF (); // send colected data to main node
     counter = 0;
-    digitalWrite (LED, LOW);
+    /*digitalWrite (LED, LOW);
     delay(100);
     digitalWrite (LED, HIGH);
     delay(25);
@@ -77,7 +77,8 @@ void loop()
     delay(100);
     digitalWrite (LED, HIGH);
     delay(25);
-    digitalWrite (LED, LOW);
+    digitalWrite (LED, LOW);*/
+    
     } // end of 64 seconds being up
 }
 
@@ -112,10 +113,10 @@ void ReadTempSensor (){
   byte present = 0;
   byte type_s;
   byte data[12];
-  //byte Sensor_1_ID[8] = {0x28, 0xFF, 0x29, 0x0D, 0x64, 0x14, 0x02, 0x8E}; // one white point 
-  //byte Sensor_2_ID[8] = {0x28, 0xFF, 0x08, 0xB8, 0x63, 0x14, 0x02, 0xD1}; // two white point
-  byte Sensor_3_ID[8] = {0x28, 0xFF, 0x18, 0xAE, 0x63, 0x14, 0x02, 0x9C}; // 3 white point
-  byte Sensor_4_ID[8] = {0x28, 0xFF, 0x97, 0xB7, 0x63, 0x14, 0x02, 0x93}; // 4 white point
+  byte Sensor_3_ID[8] = {0x28, 0xFF, 0x29, 0x0D, 0x64, 0x14, 0x02, 0x8E}; // one white point 
+  byte Sensor_4_ID[8] = {0x28, 0xFF, 0x08, 0xB8, 0x63, 0x14, 0x02, 0xD1}; // two white point
+  //byte Sensor_3_ID[8] = {0x28, 0xFF, 0x18, 0xAE, 0x63, 0x14, 0x02, 0x9C}; // 3 white point
+  //byte Sensor_4_ID[8] = {0x28, 0xFF, 0x97, 0xB7, 0x63, 0x14, 0x02, 0x93}; // 4 white point
   float Sensor3Value;// 
   float Sensor4Value;
   
@@ -170,11 +171,11 @@ void ReadTempSensor (){
   }
   Sensor3Value = (float)raw / 16.0;
   Sensor_1_temp = Sensor3Value; 
-  //Serial.print("  Temperature = ");
+ //Serial.print("  Temperature = ");
   //Serial.print(Sensor3Value);
   //Serial.println(" Celsius, ");
   //Serial.println("  ============================================");
-  //Serial.print(Sensor_1_temp); for test 
+  //Serial.print(Sensor_1_temp); // for test 
   
   
   
@@ -234,6 +235,7 @@ void ReadTempSensor (){
  }
  void SendDataNRF (){
   radio.begin();
+  //radio.setRetries(15,15);   // Set max retries and delay time on retries 15 max
   delay(100);
   radio.openWritingPipe(pipes[0]);
   radio.openReadingPipe(1, pipes[1]);
@@ -249,4 +251,3 @@ void ReadTempSensor (){
   radio.powerDown();
   
   }
-
