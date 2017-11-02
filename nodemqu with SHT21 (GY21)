@@ -1,0 +1,160 @@
+/***************************************************
+  Adafruit MQTT Library ESP8266 Adafruit IO SSL/TLS example
+
+  Must use the latest version of ESP8266 Arduino from:
+    https://github.com/esp8266/Arduino
+
+ 
+ ****************************************************/
+#include <ESP8266WiFi.h>
+#include "Adafruit_MQTT.h"
+#include "Adafruit_MQTT_Client.h"
+#include <Wire.h>
+#include "SHT21.h"
+
+SHT21 SHT21;
+
+
+
+//#include <OneWire.h>
+//OneWire  ds(2);  // on pin 2 (a 4.7K resistor is necessary)
+/************************* WiFi Access Point *********************************/
+
+#define WLAN_SSID       "your wlan ID"
+#define WLAN_PASS       "************"
+
+/************************* Adafruit.io Setup *********************************/
+
+#define AIO_SERVER      "io.adafruit.com"
+#define AIO_SERVERPORT  8883                   // 8883 for MQTTS
+#define AIO_USERNAME    "******"
+#define AIO_KEY         "************************"
+
+/************ Global State (you don't need to change this!) ******************/
+
+// WiFiFlientSecure for SSL/TLS support
+WiFiClientSecure client;
+
+// Setup the MQTT client class by passing in the WiFi client and MQTT server and login details.
+Adafruit_MQTT_Client mqtt(&client, AIO_SERVER, AIO_SERVERPORT, AIO_USERNAME, AIO_KEY);
+
+// io.adafruit.com SHA1 fingerprint
+const char* fingerprint = "26 96 1C 2A 51 07 FD 15 80 96 93 AE F7 32 CE B9 0D 01 55 C4";
+//=================================================
+/* How to use the DHT-22 sensor with Arduino uno
+   Temperature and humidity sensor
+*/
+
+
+
+//Variables
+
+float hum;  //Stores humidity value
+float temp; //Stores temperature value
+
+
+
+
+/****************************** Feeds ***************************************/
+
+// Setup a feed called 'test' for publishing.
+// Notice MQTT paths for AIO follow the form: <username>/feeds/<feedname>
+Adafruit_MQTT_Publish Sensor1 = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/feeds/esp_sensor1_temp");
+Adafruit_MQTT_Publish Sensor2 = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/feeds/esp_sensor2_humidity");
+/*************************** Sketch Code ************************************/
+
+// Bug workaround for Arduino 1.6.6, it seems to need a function declaration
+// for some reason (only affects ESP8266, likely an arduino-builder bug).
+void MQTT_connect();
+
+void setup() {
+  SHT21.begin();
+  Serial.begin(19200);
+  //Serial.println("Starting gy21 test ..");
+ // Serial.println(SHT21.getHumidity());
+  //Serial.println(SHT21.getTemperature());
+ // Serial.println("end of test ");
+  
+
+  if (WiFi.status() != WL_CONNECTED) { // FIX FOR USING 2.3.0 CORE (only .begin if not connected)
+WiFi.begin(WLAN_SSID, WLAN_PASS); // connect to the network
+}
+while (WiFi.status() != WL_CONNECTED) {
+delay(500);
+Serial.print(".");
+}
+  
+  
+}
+
+uint32_t x=0;
+
+
+// ======================================================
+
+void loop() {
+ //delay(2000);
+ //Read data from sensorand store it to variables hum and temp
+ hum = SHT21.getHumidity(); //read humidity fom sensor 
+ temp = SHT21.getTemperature(); //read temperature from sensor
+ 
+ MQTT_connect();
+
+  // Now we can publish bumidity  !
+  
+  
+  Serial.println(hum);
+  Serial.println(temp);
+  Serial.print(F("\nSending temperature value "));
+  Serial.print(temp);
+  Serial.print(F(" to test feed..."));
+  if (! Sensor1.publish(temp)) {
+    Serial.println(F("Failed"));
+  } else {
+    Serial.println(F("OK!"));
+  }
+// Now we can publish temperature stuff!
+  
+  Serial.print(F("\nSending humidity value "));
+  Serial.print(hum);
+  Serial.print(F(" to test feed..."));
+  if (! Sensor2.publish(hum)) {
+    Serial.println(F("Failed"));
+  } else {
+    Serial.println(F("OK!"));
+  }
+  
+  // wait a couple seconds to avoid rate limit
+  delay(150000);//2.5minutes
+
+}
+
+
+
+void MQTT_connect() {
+  int8_t ret;
+
+  // Stop if already connected.
+  if (mqtt.connected()) {
+    return;
+  }
+
+  Serial.print("Connecting to MQTT... ");
+
+  uint8_t retries = 3;
+  while ((ret = mqtt.connect()) != 0) { // connect will return 0 for connected
+       Serial.println(mqtt.connectErrorString(ret));
+       Serial.println("Retrying MQTT connection in 5 seconds...");
+       mqtt.disconnect();
+       delay(5000);  // wait 5 seconds
+       retries--;
+       if (retries == 0) {
+         // basically die and wait for WDT to reset me
+         while (1);
+       }
+  }
+
+  Serial.println("MQTT Connected!");
+}
+
+ 
